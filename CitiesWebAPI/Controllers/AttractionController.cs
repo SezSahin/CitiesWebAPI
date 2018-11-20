@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using CitiesWebAPI.Models;
 using CitiesWebAPI.Models.DataContexts;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CitiesWebAPI.Controllers
@@ -14,27 +15,13 @@ namespace CitiesWebAPI.Controllers
     [ApiController]
     public class AttractionController : ControllerBase
     {
-        //public static List<Attraction> attractions = new List<Attraction>();
-
-        //private List<City> _cities = new List<City>();
-        ////{
-        ////    new City { Id = 1, Name = "Odense", Description = "Beautiful city", attractions = new List<Attraction>{new Attraction{ Name = "Hotel", Description = "White" } } }
-        ////};
-
-
+        private readonly UnitOfWork _unitOfWork;
         private readonly DataContext _context;
 
-        public AttractionController(DataContext context)
+        public AttractionController(DataContext context, UnitOfWork unitOfWork)
         {
             _context = context;
-
-            if (_context.Attractions.Count() == 0)
-            {
-                // Create a new TodoItem if collection is empty,
-                // which means you can't delete all TodoItems.
-                _context.Attractions.Add(new Attraction { Name = "Attraction", Description = "Nothing", CityId = 1 });
-                _context.SaveChanges();
-            }
+            _unitOfWork = unitOfWork;
         }
 
         
@@ -66,10 +53,7 @@ namespace CitiesWebAPI.Controllers
         [HttpGet(Name = "Attractions")]
         public ActionResult<List<Attraction>> GetAttractions()
         {
-
-            var attr = _context.Attractions.ToList();
-
-            return Ok(attr);
+            return new OkObjectResult(_unitOfWork.Attraction.GetAll());
         }
 
         #region swagger
@@ -103,14 +87,28 @@ namespace CitiesWebAPI.Controllers
 
             List<Attraction> attr = new List<Attraction>();
 
-            attr = _context.Attractions.Where(x => x.Id == id).ToList();
+            var attraction = _context.Attractions.Where(x => x.Id == id).ToList();
 
-            if (attr.Count == 0)
+            if (attraction.Count == 0)
             {
                 return NotFound();
             }
 
-            return Ok(attr);
+            return new OkObjectResult(_unitOfWork.Attraction.Get(id));
+        }
+
+        [HttpGet]
+        [Route("attractions/{id}")]
+        public IActionResult GetAttractionsByCity(int id)
+        {
+            var cities = _context.Cities.ToList();
+
+            if (_unitOfWork.City.Get(id) is null)
+            {
+                return NotFound();
+            }
+
+            return new OkObjectResult(_unitOfWork.Attraction.GetAttractionsByCity(id));
         }
 
 
@@ -138,8 +136,15 @@ namespace CitiesWebAPI.Controllers
         [ProducesResponseType(400)]
         public IActionResult CreateAttraction(Attraction attraction)
         {
-            _context.Attractions.Add(attraction);
-            _context.SaveChanges();
+            _unitOfWork.Attraction.Add(attraction);
+            try
+            {
+                _unitOfWork.Complete();
+            }
+            catch (Exception)
+            {
+                return Conflict();
+            }
 
             return CreatedAtAction("CreateAttraction", attraction);
         }
@@ -162,8 +167,8 @@ namespace CitiesWebAPI.Controllers
             //}
             //return NotFound();
 
-            var attractionItem = _context.Attractions.Find(attraction.Id);
-            if (attractionItem == null)
+            Attraction attractionItem = _unitOfWork.Attraction.Get(attraction.Id);
+            if (attractionItem is null)
             {
                 return NotFound();
             }
@@ -171,25 +176,59 @@ namespace CitiesWebAPI.Controllers
             attractionItem.Description = attraction.Description;
             attractionItem.Name = attraction.Name;
 
-            _context.Attractions.Update(attractionItem);
-            _context.SaveChanges();
+            try
+            {
+                _unitOfWork.Complete();
+            }
+            catch (Exception)
+            {
+                return Conflict();
+            }
 
             return NoContent();
+        }
+
+        [HttpPatch]
+        [Route("Update/{id}")]
+        public IActionResult Patch(JsonPatchDocument<Attraction> attractionPatch, int id)
+        {
+            var attractionItem = _unitOfWork.Attraction.Get(id);
+            if (attractionItem is null)
+            {
+                return NotFound();
+            }
+            try
+            {
+                attractionPatch.ApplyTo(attractionItem);
+                _unitOfWork.Complete();
+
+                return Ok();
+            }
+            catch (Exception)
+            {
+                return Conflict();
+            }
         }
 
         [HttpDelete("{id}")]
         public IActionResult Delete(int id)
         {
-            var cityItem = _context.Cities.Find(id);
-            if (cityItem == null)
+            var attractionItem = _unitOfWork.Attraction.Get(id);
+            if (attractionItem is null)
             {
                 return NotFound();
             }
+            try
+            {
+                _unitOfWork.Attraction.Remove(attractionItem);
+                _unitOfWork.Complete();
 
-            _context.Cities.Remove(cityItem);
-            _context.SaveChanges();
-
-            return NoContent();
+                return NoContent();
+            }
+            catch (Exception)
+            {
+                return Conflict();
+            }
         }
     }
 }

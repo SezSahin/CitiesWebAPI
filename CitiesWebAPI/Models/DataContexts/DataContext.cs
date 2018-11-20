@@ -10,9 +10,7 @@ namespace CitiesWebAPI.Models.DataContexts
     {
         public DataContext(DbContextOptions<DataContext> options) : base(options)
         {
-
             Database.EnsureCreated();
-
         }
 
         public DbSet<City> Cities { get; set; }

@@ -2,9 +2,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using AutoMapper;
+using CitiesWebAPI.DTOs;
 using CitiesWebAPI.Models;
 using CitiesWebAPI.Models.DataContexts;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CitiesWebAPI.Controllers
@@ -14,27 +17,12 @@ namespace CitiesWebAPI.Controllers
     [ApiController]
     public class CityController : ControllerBase
     {
-        //City city = new City();
-
-        public static List<City> cities = new List<City>();
-        //{
-        //    new City() { Id = 1, Name = "Odense", Description = "Beautiful city", attractions = new List<Attraction>{new Attraction{ Name = "Hotel", Description = "White" } } }
-        //};
-
-        //public static List<Attraction> attractions = new List<Attraction>();
-
-        private readonly DataContext _context;
-        public CityController(DataContext context)
+        private readonly IMapper _mapper;
+        private readonly UnitOfWork _unitOfWork;
+        public CityController(IMapper mapper, UnitOfWork unitOfWork)
         {
-            _context = context;
-
-            if(_context.Cities.Count() == 0)
-            {
-                // Create a new TodoItem if collection is empty,
-                // which means you can't delete all TodoItems.
-                _context.Cities.Add(new City{ Name = "City" });
-                _context.SaveChanges();
-            }
+            _mapper = mapper;
+            _unitOfWork = unitOfWork;
         }
 
         #region swagger
@@ -63,17 +51,16 @@ namespace CitiesWebAPI.Controllers
         /// <response code="400">If the city items are null</response>    
         #endregion
         [HttpGet]
-        public ActionResult<List<City>> GetCities()
+        public ActionResult GetCities(bool getAttraction = false)
         {
             //cities.Add(new City() { Id = 1, Name = "Odense", Description = "Beautiful city" });
             //cities.Add(new City() { Id = 2, Name = "Copenhagen", Description = "Beautiful, but crowded city" });
-            var cityList = _context.Cities.ToList();
 
-            foreach(City city in cityList)
+            if (!getAttraction)
             {
-                city.attractions = _context.Attractions.Where(x => x.CityId == city.Id).ToList();
+                return new ObjectResult(_mapper.Map<List<CityOnlyDataTransferObject>>(_unitOfWork.City.GetCitiesWithoutAttractions()));
             }
-            return Ok(cityList);
+            return new ObjectResult(_mapper.Map<List<CityDataTransferObject>>(_unitOfWork.City.GetCitiesWithAttractions())); // This will map from City to CityDataTransferObject
         }
 
         #region swagger
@@ -96,18 +83,20 @@ namespace CitiesWebAPI.Controllers
         /// <response code="400">If the city item is null</response>
         #endregion
         [HttpGet("{id}", Name ="GetCity")]
-        public ActionResult<City> GetCity(int id)
+        public ActionResult<City> GetCity(int id, bool getAttraction = false)
         {
             //cities.Add(new City() { Id = 1, Name = "Odense", Description = "Beautiful city" });
             //cities.Add(new City() { Id = 2, Name = "Copenhagen", Description = "Beautiful, but crowded city" });
 
-            var cityList = _context.Cities.Find(id); //cities.SingleOrDefault(x => x.Id == id);
-            if(cityList == null)
+            if (_unitOfWork.City.Get(id) is null)
             {
                 return NotFound();
             }
-            cityList.attractions = _context.Attractions.Where(x => x.CityId == id).ToList();
-            return cityList;
+            if (!getAttraction)
+            {
+                return new ObjectResult(_mapper.Map<List<CityOnlyDataTransferObject>>(_unitOfWork.City.GetCityWithoutAttractions(id)));
+            }
+            return new ObjectResult(_mapper.Map<List<CityDataTransferObject>>(_unitOfWork.City.GetCityWithAttractions(id)));
         }
 
         #region swagger
@@ -142,10 +131,10 @@ namespace CitiesWebAPI.Controllers
 
             //cities.Add(city);
 
-            _context.Cities.Add(city);
-            _context.SaveChanges();
+            _unitOfWork.City.Add(city);
+            _unitOfWork.Complete();
 
-            return CreatedAtAction("GetCity", new { id = city.Id }, city);
+            return CreatedAtAction("PostCity", city);
         }
 
         #region swagger
@@ -166,19 +155,50 @@ namespace CitiesWebAPI.Controllers
             //}
             //return NotFound();
 
-            var cityItem = _context.Cities.Find(city.Id);
-            if (cityItem == null)
+            if (_unitOfWork.City.Get(city.Id) is null)
             {
                 return NotFound();
             }
 
-            cityItem.Description = city.Description;
-            cityItem.Name = city.Name;
+            City cityItem = _unitOfWork.City.Get(city.Id);
 
-            _context.Cities.Update(cityItem);
-            _context.SaveChanges();
+            try
+            {
+                cityItem.Name = city.Name;
+                cityItem.Description = city.Description;
 
-            return NoContent();
+                _unitOfWork.Complete();
+
+                return Ok();
+            }
+            catch (Exception)
+            {
+                return Conflict();
+            }
+        }
+
+        [HttpPatch]
+        [Route("Update/{id}")]
+        public IActionResult Patch(JsonPatchDocument<City> cityPatch, int id)
+        {
+            var cityItem = _unitOfWork.City.Get(id);
+
+            if (cityItem is null)
+            {
+                return NotFound();
+            }
+            try
+            {
+                cityPatch.ApplyTo(cityItem);
+
+                _unitOfWork.Complete();
+
+                return Ok();
+            }
+            catch (Exception)
+            {
+                return Conflict();
+            }
         }
 
         #region swagger
@@ -194,30 +214,37 @@ namespace CitiesWebAPI.Controllers
             //cities.Remove(city);
             //return NoContent();
 
-            var cityItem = _context.Cities.Find(id);
+            var cityItem = _unitOfWork.City.Get(id);
             if (cityItem == null)
             {
                 return NotFound();
             }
 
-            _context.Cities.Remove(cityItem);
-            _context.SaveChanges();
-
-            return NoContent();
-        }
-
-        [ValidateModel]
-        [HttpPost("api/city/token")]
-        public IActionResult CreateToken([FromBody]City city)
-        {
             try
             {
+                _unitOfWork.City.Remove(cityItem);
+                _unitOfWork.Complete();
 
+                return NoContent();
             }
-            catch(Exception ex)
+            catch(Exception)
             {
-                return 
+                return Conflict();
             }
         }
+
+        //[ValidateModel]
+        //[HttpPost("api/city/token")]
+        //public IActionResult CreateToken([FromBody]City city)
+        //{
+        //    try
+        //    {
+
+        //    }
+        //    catch(Exception ex)
+        //    {
+        //        return 
+        //    }
+        //}
     }
 }

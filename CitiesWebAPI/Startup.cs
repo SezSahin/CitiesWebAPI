@@ -4,6 +4,10 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using AutoMapper;
+using CitiesWebAPI.Automapper;
+using CitiesWebAPI.DTOs;
+using CitiesWebAPI.Models;
 using CitiesWebAPI.Models.DataContexts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -30,11 +34,11 @@ namespace CitiesWebAPI
         // For more information on how to configure your application, visit https://go.microsoft.com/fwlink/?LinkID=398940
         public void ConfigureServices(IServiceCollection services)
         {
-            //var connectionString = Configuration.GetConnectionString("ConnectionString");
-
-            //services.AddDbContext<DataContext>(options => options.UseSqlServer(Configuration["ConnectionString"]));
-
-            services.AddDbContext<DataContext>(options => options.UseInMemoryDatabase("CitiesDb"));
+            services.AddDbContext<DataContext>(options =>
+            {
+                var connectionString = Configuration.GetConnectionString("DefaultConnection");
+                options.UseSqlServer(connectionString);
+            });
 
             services.AddMvc()
                 .AddXmlSerializerFormatters()
@@ -47,31 +51,14 @@ namespace CitiesWebAPI
                 options.SuppressModelStateInvalidFilter = true;
             });
 
+            services.AddAutoMapper();
+            services.AddTransient<UnitOfWork>();
+            services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1).AddXmlSerializerFormatters();
+
             // Register the Swagger generator, defining 1 or more Swagger documents
             services.AddSwaggerGen(c =>
             {
-                c.SwaggerDoc("v1", new Info
-                {
-                    Version = "v1",
-                    Title = "ToDo API",
-                    Description = "A simple example ASP.NET Core Web API",
-                    TermsOfService = "None",
-                    Contact = new Contact
-                    {
-                        Name = "Shayne Boyer",
-                        Email = string.Empty,
-                        Url = "https://twitter.com/spboyer"
-                    },
-                    License = new License
-                    {
-                        Name = "Use under LICX",
-                        Url = "https://example.com/license"
-                    }
-                });
-
-                services.AddHttpCacheHeaders();
-
-                services.AddResponseCaching();
+                c.SwaggerDoc("v1", new Info { Version = "v1", Title = "Cities API" });
 
                 // Set the comments path for the Swagger JSON and UI.
                 var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
@@ -81,31 +68,21 @@ namespace CitiesWebAPI
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory logger)
+        public void Configure(IApplicationBuilder app, IHostingEnvironment env)
         {
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
             }
-
-            logger.AddConsole(Configuration.GetSection("Logging"));
-            logger.AddDebug();
-
-            app.UseDefaultFiles();
-            app.UseStaticFiles();
-
-            app.UseSwagger();
-
-            app.UseSwaggerUI(c =>
+            else
             {
-                c.SwaggerEndpoint("/swagger/v1/swagger.json", "My API V1");
-                c.RoutePrefix = string.Empty;
-            });
+                app.UseHsts();
+            }
 
-            app.UseResponseCaching();
-
-            app.UseHttpCacheHeaders();
-
+            app.UseStaticFiles();
+            app.UseSwagger();
+            app.UseSwaggerUI(c => { c.SwaggerEndpoint("/swagger/v1/swagger.json", "My API V1"); c.RoutePrefix = string.Empty; });
+            app.UseHttpsRedirection();
             app.UseMvc();
 
             app.Run(async (context) =>
