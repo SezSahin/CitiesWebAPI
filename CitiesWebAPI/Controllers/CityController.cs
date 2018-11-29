@@ -233,18 +233,47 @@ namespace CitiesWebAPI.Controllers
             }
         }
 
-        //[ValidateModel]
-        //[HttpPost("api/city/token")]
-        //public IActionResult CreateToken([FromBody]City city)
+        //[HttpPost("token")]
+        //public async Task<IActionResult> CreateToken([FromBody]User user)
         //{
         //    try
         //    {
+        //        var user2 = await _user.FindByNameAsync(user.UserName);
+        //        if (user2 != null)
+        //        {
+        //            if (_hasher.VerifyHashedPassword(user2, user2.PasswordHash, user.Password) == PasswordVerificationResult.Success)
+        //            {
+        //                var claims = new[]
+        //                {
+        //                    new Claim(JwtRegisteredClaimNames.Sub, user.UserName),
+        //                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+        //                };
 
+        //                var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("VERYLONGVALUETHATISSECURE"));
+        //                var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        //                var token = new JwtSecurityToken(
+        //                    issuer: "http://mycodecamp.org",
+        //                    audience: "http://mycodecamp.org",
+        //                    claims: claims,
+        //                    expires: DateTime.UtcNow.AddMinutes(15),
+        //                    signingCredentials: creds
+        //                    );
+
+        //                return Ok(new
+        //                {
+        //                    token = new JwtSecurityTokenHandler().WriteToken(token),
+        //                    expiration = token.ValidTo
+        //                });
+        //            };
+        //        }
         //    }
-        //    catch(Exception ex)
+        //    catch (Exception ex)
         //    {
-        //        return 
+        //        _logger.LogError($"Exception thrown while creating JWT: {ex}");
         //    }
+
+        //    return BadRequest("Failed to generate token");
         //}
     }
 }
